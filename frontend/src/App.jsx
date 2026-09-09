@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from "react";
 import "./App.css";
 
-const API = "http://gwaram-kaolin-backend.onrender.com/api";
-
+const API = "https://gwaram-kaolin-backend.onrender.com/api";
 // =====================================================
 // MENU ITEMS
 // =====================================================
@@ -100,8 +99,7 @@ function StatusBadge({ status }) {
     <span className={`status-badge ${getStatusClass(status)}`}>
       {status || "N/A"}
     </span>
-  );
-}
+  )
 
 // =====================================================
 // APP
