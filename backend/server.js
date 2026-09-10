@@ -11,21 +11,50 @@ const PORT = process.env.PORT || 5000;
 // MIDDLEWARE
 // =====================================================
 
-app.use(cors());
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:3000",
+  "https://gwaram-kaolin-frontend.onrender.com",
+];
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow browser navigation and approved frontend origins
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error("Not allowed by CORS"));
+    },
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
+
 app.use(express.json());
 
 // =====================================================
 // POSTGRESQL CONNECTION
 // =====================================================
 
+if (!process.env.DATABASE_URL) {
+  console.error("DATABASE_URL is not configured.");
+}
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
+  ssl:
+    process.env.NODE_ENV === "production"
+      ? { rejectUnauthorized: false }
+      : false,
 });
+
 pool
   .query("SELECT NOW()")
-  .then(() => {
+  .then(async () => {
     console.log("PostgreSQL connected successfully.");
-    createDefaultAdmin();
+    await createDefaultAdmin();
   })
   .catch((error) => {
     console.error("Database connection failed:", error.message);
@@ -39,6 +68,27 @@ app.get("/", (req, res) => {
   res.json({
     message: "Gwaram Kaolin Supply Chain System Backend is running.",
   });
+});
+
+// =====================================================
+// HEALTH CHECK
+// =====================================================
+
+app.get("/api/health", async (req, res) => {
+  try {
+    await pool.query("SELECT NOW()");
+
+    res.json({
+      status: "OK",
+      message: "Gwaram Kaolin API and database are working.",
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: "ERROR",
+      message: "Database connection problem.",
+      error: error.message,
+    });
+  }
 });
 
 // =====================================================
@@ -85,6 +135,8 @@ async function createDefaultAdmin() {
       );
 
       console.log("Default administrator created successfully.");
+    } else {
+      console.log("Default administrator already exists.");
     }
   } catch (error) {
     console.error("Admin creation error:", error.message);
@@ -177,9 +229,7 @@ app.get("/api/workers", async (req, res) => {
 
     res.json(result.rows);
   } catch (error) {
-    res.status(500).json({
-      error: error.message,
-    });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -231,9 +281,7 @@ app.post("/api/workers", async (req, res) => {
 
     res.status(201).json(result.rows[0]);
   } catch (error) {
-    res.status(500).json({
-      error: error.message,
-    });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -258,9 +306,7 @@ app.delete("/api/workers/:id", async (req, res) => {
       message: "Worker deleted successfully.",
     });
   } catch (error) {
-    res.status(500).json({
-      error: error.message,
-    });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -278,9 +324,7 @@ app.get("/api/mining-sites", async (req, res) => {
 
     res.json(result.rows);
   } catch (error) {
-    res.status(500).json({
-      error: error.message,
-    });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -321,9 +365,7 @@ app.post("/api/mining-sites", async (req, res) => {
 
     res.status(201).json(result.rows[0]);
   } catch (error) {
-    res.status(500).json({
-      error: error.message,
-    });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -365,9 +407,7 @@ app.delete("/api/mining-sites/:id", async (req, res) => {
       message: "Mining site deleted successfully.",
     });
   } catch (error) {
-    res.status(500).json({
-      error: error.message,
-    });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -385,9 +425,7 @@ app.get("/api/kaolin-products", async (req, res) => {
 
     res.json(result.rows);
   } catch (error) {
-    res.status(500).json({
-      error: error.message,
-    });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -439,9 +477,7 @@ app.post("/api/kaolin-products", async (req, res) => {
 
     res.status(201).json(result.rows[0]);
   } catch (error) {
-    res.status(500).json({
-      error: error.message,
-    });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -483,9 +519,7 @@ app.delete("/api/kaolin-products/:id", async (req, res) => {
       message: "Product deleted successfully.",
     });
   } catch (error) {
-    res.status(500).json({
-      error: error.message,
-    });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -503,9 +537,7 @@ app.get("/api/customers", async (req, res) => {
 
     res.json(result.rows);
   } catch (error) {
-    res.status(500).json({
-      error: error.message,
-    });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -546,9 +578,7 @@ app.post("/api/customers", async (req, res) => {
 
     res.status(201).json(result.rows[0]);
   } catch (error) {
-    res.status(500).json({
-      error: error.message,
-    });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -590,9 +620,7 @@ app.delete("/api/customers/:id", async (req, res) => {
       message: "Customer deleted successfully.",
     });
   } catch (error) {
-    res.status(500).json({
-      error: error.message,
-    });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -610,9 +638,7 @@ app.get("/api/suppliers", async (req, res) => {
 
     res.json(result.rows);
   } catch (error) {
-    res.status(500).json({
-      error: error.message,
-    });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -656,9 +682,7 @@ app.post("/api/suppliers", async (req, res) => {
 
     res.status(201).json(result.rows[0]);
   } catch (error) {
-    res.status(500).json({
-      error: error.message,
-    });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -683,9 +707,7 @@ app.delete("/api/suppliers/:id", async (req, res) => {
       message: "Supplier deleted successfully.",
     });
   } catch (error) {
-    res.status(500).json({
-      error: error.message,
-    });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -710,9 +732,7 @@ app.get("/api/orders", async (req, res) => {
 
     res.json(result.rows);
   } catch (error) {
-    res.status(500).json({
-      error: error.message,
-    });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -828,9 +848,7 @@ app.delete("/api/orders/:id", async (req, res) => {
       message: "Order deleted successfully.",
     });
   } catch (error) {
-    res.status(500).json({
-      error: error.message,
-    });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -849,7 +867,5 @@ app.use("/api", (req, res) => {
 // =====================================================
 
 app.listen(PORT, () => {
-  console.log(
-    `Backend server running on http://localhost:${PORT}`
-  );
+  console.log(`Backend server running on port ${PORT}`);
 });
