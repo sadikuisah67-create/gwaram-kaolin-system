@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const { Pool } = require("pg");
 const bcrypt = require("bcrypt");
+
 require("dotenv").config();
 
 const app = express();
@@ -20,7 +21,6 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow browser navigation and approved frontend origins
       if (!origin || allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
@@ -50,46 +50,114 @@ const pool = new Pool({
       : false,
 });
 
-pool
-  .query("SELECT NOW()")
-  .then(async () => {
-    console.log("PostgreSQL connected successfully.");
-    await createDefaultAdmin();
-  })
-  .catch((error) => {
-    console.error("Database connection failed:", error.message);
-  });
-
 // =====================================================
-// HOME ROUTE
+// CREATE DATABASE TABLES
 // =====================================================
 
-app.get("/", (req, res) => {
-  res.json({
-    message: "Gwaram Kaolin Supply Chain System Backend is running.",
-  });
-});
-
-// =====================================================
-// HEALTH CHECK
-// =====================================================
-
-app.get("/api/health", async (req, res) => {
+async function initializeDatabase() {
   try {
-    await pool.query("SELECT NOW()");
+    console.log("Initializing database tables...");
 
-    res.json({
-      status: "OK",
-      message: "Gwaram Kaolin API and database are working.",
-    });
+    // USERS
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        user_id SERIAL PRIMARY KEY,
+        full_name VARCHAR(150) NOT NULL,
+        phone VARCHAR(30),
+        email VARCHAR(150) UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        role VARCHAR(50) NOT NULL DEFAULT 'user',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // MINING SITES
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS mining_sites (
+        site_id SERIAL PRIMARY KEY,
+        site_name VARCHAR(150) NOT NULL,
+        location VARCHAR(255) NOT NULL,
+        description TEXT,
+        status VARCHAR(50) DEFAULT 'active',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // WORKERS
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS workers (
+        worker_id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(user_id) ON DELETE SET NULL,
+        worker_type VARCHAR(100) NOT NULL,
+        skill VARCHAR(150) NOT NULL,
+        availability VARCHAR(50) DEFAULT 'available',
+        daily_rate NUMERIC(15, 2) NOT NULL,
+        site_id INTEGER REFERENCES mining_sites(site_id) ON DELETE SET NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // KAOLIN PRODUCTS
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS kaolin_products (
+        product_id SERIAL PRIMARY KEY,
+        product_name VARCHAR(150) NOT NULL,
+        grade VARCHAR(100) NOT NULL,
+        quantity_available NUMERIC(15, 2) NOT NULL DEFAULT 0,
+        unit VARCHAR(50) NOT NULL,
+        price_per_unit NUMERIC(15, 2) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // CUSTOMERS
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS customers (
+        customer_id SERIAL PRIMARY KEY,
+        full_name VARCHAR(150) NOT NULL,
+        phone VARCHAR(30) NOT NULL,
+        email VARCHAR(150),
+        address TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // SUPPLIERS
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS suppliers (
+        supplier_id SERIAL PRIMARY KEY,
+        supplier_name VARCHAR(150) NOT NULL,
+        phone VARCHAR(30),
+        email VARCHAR(150),
+        address TEXT,
+        status VARCHAR(50) DEFAULT 'active',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // ORDERS
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS orders (
+        order_id SERIAL PRIMARY KEY,
+        customer_id INTEGER NOT NULL
+          REFERENCES customers(customer_id)
+          ON DELETE RESTRICT,
+        product_id INTEGER NOT NULL
+          REFERENCES kaolin_products(product_id)
+          ON DELETE RESTRICT,
+        quantity NUMERIC(15, 2) NOT NULL,
+        total_amount NUMERIC(15, 2) NOT NULL,
+        order_status VARCHAR(50) DEFAULT 'pending',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    console.log("Database tables initialized successfully.");
   } catch (error) {
-    res.status(500).json({
-      status: "ERROR",
-      message: "Database connection problem.",
-      error: error.message,
-    });
+    console.error("Database initialization error:", error.message);
+    throw error;
   }
-});
+}
 
 // =====================================================
 // CREATE DEFAULT ADMIN
@@ -140,8 +208,60 @@ async function createDefaultAdmin() {
     }
   } catch (error) {
     console.error("Admin creation error:", error.message);
+    throw error;
   }
 }
+
+// =====================================================
+// DATABASE STARTUP
+// =====================================================
+
+async function startDatabase() {
+  try {
+    await pool.query("SELECT NOW()");
+
+    console.log("PostgreSQL connected successfully.");
+
+    await initializeDatabase();
+
+    await createDefaultAdmin();
+
+    console.log("Database startup completed successfully.");
+  } catch (error) {
+    console.error("Database connection failed:", error.message);
+  }
+}
+
+// =====================================================
+// HOME ROUTE
+// =====================================================
+
+app.get("/", (req, res) => {
+  res.json({
+    message: "Gwaram Kaolin Supply Chain System Backend is running.",
+  });
+});
+
+// =====================================================
+// HEALTH CHECK
+// =====================================================
+
+app.get("/api/health", async (req, res) => {
+  try {
+    await pool.query("SELECT NOW()");
+
+    res.json({
+      status: "OK",
+      message: "Gwaram Kaolin API and database are working.",
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: "ERROR",
+      message: "Database connection problem.",
+      error: error.message,
+    });
+  }
+});
 
 // =====================================================
 // LOGIN
@@ -866,6 +986,8 @@ app.use("/api", (req, res) => {
 // START SERVER
 // =====================================================
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`Backend server running on port ${PORT}`);
+
+  await startDatabase();
 });
