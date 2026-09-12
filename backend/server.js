@@ -38,34 +38,12 @@ async function initializeDatabase() {
   try {
     console.log("Initializing database tables...");
 
-    /*
-      IMPORTANT:
-      The following DROP statements repair the incomplete
-      tables created during the previous failed import.
-
-      After the database is successfully created, we will
-      remove this repair section so future deployments
-      preserve your data.
-    */
-
-    await pool.query(`
-      DROP TABLE IF EXISTS workers CASCADE;
-      DROP TABLE IF EXISTS orders CASCADE;
-      DROP TABLE IF EXISTS mining_sites CASCADE;
-      DROP TABLE IF EXISTS kaolin_products CASCADE;
-      DROP TABLE IF EXISTS customers CASCADE;
-      DROP TABLE IF EXISTS suppliers CASCADE;
-      DROP TABLE IF EXISTS users CASCADE;
-    `);
-
-    console.log("Old incomplete tables removed.");
-
     // =====================================================
     // USERS
     // =====================================================
 
     await pool.query(`
-      CREATE TABLE users (
+      CREATE TABLE IF NOT EXISTS users (
         user_id SERIAL PRIMARY KEY,
         full_name VARCHAR(150) NOT NULL,
         phone VARCHAR(30),
@@ -81,7 +59,7 @@ async function initializeDatabase() {
     // =====================================================
 
     await pool.query(`
-      CREATE TABLE mining_sites (
+      CREATE TABLE IF NOT EXISTS mining_sites (
         site_id SERIAL PRIMARY KEY,
         site_name VARCHAR(150) NOT NULL,
         location VARCHAR(255) NOT NULL,
@@ -96,7 +74,7 @@ async function initializeDatabase() {
     // =====================================================
 
     await pool.query(`
-      CREATE TABLE workers (
+      CREATE TABLE IF NOT EXISTS workers (
         worker_id SERIAL PRIMARY KEY,
         user_id INTEGER REFERENCES users(user_id)
           ON DELETE SET NULL,
@@ -115,7 +93,7 @@ async function initializeDatabase() {
     // =====================================================
 
     await pool.query(`
-      CREATE TABLE kaolin_products (
+      CREATE TABLE IF NOT EXISTS kaolin_products (
         product_id SERIAL PRIMARY KEY,
         product_name VARCHAR(150) NOT NULL,
         grade VARCHAR(100) NOT NULL,
@@ -131,7 +109,7 @@ async function initializeDatabase() {
     // =====================================================
 
     await pool.query(`
-      CREATE TABLE customers (
+      CREATE TABLE IF NOT EXISTS customers (
         customer_id SERIAL PRIMARY KEY,
         full_name VARCHAR(150) NOT NULL,
         phone VARCHAR(30) NOT NULL,
@@ -146,7 +124,7 @@ async function initializeDatabase() {
     // =====================================================
 
     await pool.query(`
-      CREATE TABLE suppliers (
+      CREATE TABLE IF NOT EXISTS suppliers (
         supplier_id SERIAL PRIMARY KEY,
         supplier_name VARCHAR(150) NOT NULL,
         phone VARCHAR(30),
@@ -162,7 +140,7 @@ async function initializeDatabase() {
     // =====================================================
 
     await pool.query(`
-      CREATE TABLE orders (
+      CREATE TABLE IF NOT EXISTS orders (
         order_id SERIAL PRIMARY KEY,
         customer_id INTEGER NOT NULL
           REFERENCES customers(customer_id)
@@ -216,8 +194,7 @@ async function createDefaultAdmin() {
 
       await pool.query(
         `
-        INSERT INTO users
-        (
+        INSERT INTO users (
           full_name,
           phone,
           email,
@@ -263,9 +240,7 @@ async function startDatabase() {
   try {
     await pool.query("SELECT NOW()");
 
-    console.log(
-      "PostgreSQL connected successfully."
-    );
+    console.log("PostgreSQL connected successfully.");
 
     await initializeDatabase();
 
@@ -351,11 +326,10 @@ app.post("/api/auth/login", async (req, res) => {
 
     const user = result.rows[0];
 
-    const passwordCorrect =
-      await bcrypt.compare(
-        password,
-        user.password_hash
-      );
+    const passwordCorrect = await bcrypt.compare(
+      password,
+      user.password_hash
+    );
 
     if (!passwordCorrect) {
       return res.status(401).json({
@@ -375,10 +349,7 @@ app.post("/api/auth/login", async (req, res) => {
     });
 
   } catch (error) {
-    console.error(
-      "Login error:",
-      error.message
-    );
+    console.error("Login error:", error.message);
 
     res.status(500).json({
       error: "Login failed.",
@@ -420,8 +391,7 @@ app.post("/api/workers", async (req, res) => {
 
     const result = await pool.query(
       `
-      INSERT INTO workers
-      (
+      INSERT INTO workers (
         user_id,
         worker_type,
         skill,
@@ -429,7 +399,7 @@ app.post("/api/workers", async (req, res) => {
         daily_rate,
         site_id
       )
-      VALUES ($1,$2,$3,$4,$5,$6)
+      VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING *
       `,
       [
@@ -469,8 +439,7 @@ app.delete("/api/workers/:id", async (req, res) => {
     }
 
     res.json({
-      message:
-        "Worker deleted successfully.",
+      message: "Worker deleted successfully.",
     });
 
   } catch (error) {
@@ -512,14 +481,13 @@ app.post("/api/mining-sites", async (req, res) => {
 
     const result = await pool.query(
       `
-      INSERT INTO mining_sites
-      (
+      INSERT INTO mining_sites (
         site_name,
         location,
         description,
         status
       )
-      VALUES ($1,$2,$3,$4)
+      VALUES ($1, $2, $3, $4)
       RETURNING *
       `,
       [
@@ -601,15 +569,14 @@ app.post("/api/kaolin-products", async (req, res) => {
 
     const result = await pool.query(
       `
-      INSERT INTO kaolin_products
-      (
+      INSERT INTO kaolin_products (
         product_name,
         grade,
         quantity_available,
         unit,
         price_per_unit
       )
-      VALUES ($1,$2,$3,$4,$5)
+      VALUES ($1, $2, $3, $4, $5)
       RETURNING *
       `,
       [
@@ -662,14 +629,13 @@ app.post("/api/customers", async (req, res) => {
 
     const result = await pool.query(
       `
-      INSERT INTO customers
-      (
+      INSERT INTO customers (
         full_name,
         phone,
         email,
         address
       )
-      VALUES ($1,$2,$3,$4)
+      VALUES ($1, $2, $3, $4)
       RETURNING *
       `,
       [
@@ -722,15 +688,14 @@ app.post("/api/suppliers", async (req, res) => {
 
     const result = await pool.query(
       `
-      INSERT INTO suppliers
-      (
+      INSERT INTO suppliers (
         supplier_name,
         phone,
         email,
         address,
         status
       )
-      VALUES ($1,$2,$3,$4,$5)
+      VALUES ($1, $2, $3, $4, $5)
       RETURNING *
       `,
       [
@@ -811,15 +776,14 @@ app.post("/api/orders", async (req, res) => {
 
     const result = await pool.query(
       `
-      INSERT INTO orders
-      (
+      INSERT INTO orders (
         customer_id,
         product_id,
         quantity,
         total_amount,
         order_status
       )
-      VALUES ($1,$2,$3,$4,$5)
+      VALUES ($1, $2, $3, $4, $5)
       RETURNING *
       `,
       [
