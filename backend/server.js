@@ -38,10 +38,6 @@ async function initializeDatabase() {
   try {
     console.log("Initializing database tables...");
 
-    // =====================================================
-    // USERS
-    // =====================================================
-
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
         user_id SERIAL PRIMARY KEY,
@@ -51,12 +47,8 @@ async function initializeDatabase() {
         password_hash TEXT NOT NULL,
         role VARCHAR(50) NOT NULL DEFAULT 'user',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
+      )
     `);
-
-    // =====================================================
-    // MINING SITES
-    // =====================================================
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS mining_sites (
@@ -66,12 +58,8 @@ async function initializeDatabase() {
         description TEXT,
         status VARCHAR(50) DEFAULT 'active',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
+      )
     `);
-
-    // =====================================================
-    // WORKERS
-    // =====================================================
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS workers (
@@ -85,12 +73,8 @@ async function initializeDatabase() {
         site_id INTEGER REFERENCES mining_sites(site_id)
           ON DELETE SET NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
+      )
     `);
-
-    // =====================================================
-    // KAOLIN PRODUCTS
-    // =====================================================
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS kaolin_products (
@@ -101,12 +85,8 @@ async function initializeDatabase() {
         unit VARCHAR(50) NOT NULL,
         price_per_unit NUMERIC(15,2) NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
+      )
     `);
-
-    // =====================================================
-    // CUSTOMERS
-    // =====================================================
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS customers (
@@ -116,12 +96,8 @@ async function initializeDatabase() {
         email VARCHAR(150),
         address TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
+      )
     `);
-
-    // =====================================================
-    // SUPPLIERS
-    // =====================================================
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS suppliers (
@@ -132,12 +108,8 @@ async function initializeDatabase() {
         address TEXT,
         status VARCHAR(50) DEFAULT 'active',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
+      )
     `);
-
-    // =====================================================
-    // ORDERS
-    // =====================================================
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS orders (
@@ -152,7 +124,7 @@ async function initializeDatabase() {
         total_amount NUMERIC(15,2) NOT NULL,
         order_status VARCHAR(50) DEFAULT 'pending',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
+      )
     `);
 
     console.log("Database tables initialized successfully.");
@@ -162,13 +134,12 @@ async function initializeDatabase() {
       "Database initialization error:",
       error.message
     );
-
     throw error;
   }
 }
 
 // =====================================================
-// CREATE DEFAULT ADMINISTRATOR
+// DEFAULT ADMINISTRATOR
 // =====================================================
 
 async function createDefaultAdmin() {
@@ -212,22 +183,14 @@ async function createDefaultAdmin() {
         ]
       );
 
-      console.log(
-        "Default administrator created successfully."
-      );
+      console.log("Default administrator created successfully.");
 
     } else {
-      console.log(
-        "Default administrator already exists."
-      );
+      console.log("Default administrator already exists.");
     }
 
   } catch (error) {
-    console.error(
-      "Admin creation error:",
-      error.message
-    );
-
+    console.error("Admin creation error:", error.message);
     throw error;
   }
 }
@@ -243,12 +206,9 @@ async function startDatabase() {
     console.log("PostgreSQL connected successfully.");
 
     await initializeDatabase();
-
     await createDefaultAdmin();
 
-    console.log(
-      "Database startup completed successfully."
-    );
+    console.log("Database startup completed successfully.");
 
   } catch (error) {
     console.error(
@@ -259,7 +219,7 @@ async function startDatabase() {
 }
 
 // =====================================================
-// HOME ROUTE
+// HOME
 // =====================================================
 
 app.get("/", (req, res) => {
@@ -286,7 +246,6 @@ app.get("/api/health", async (req, res) => {
   } catch (error) {
     res.status(500).json({
       status: "ERROR",
-      message: "Database connection problem.",
       error: error.message,
     });
   }
@@ -302,8 +261,7 @@ app.post("/api/auth/login", async (req, res) => {
 
     if (!email || !password) {
       return res.status(400).json({
-        error:
-          "Email and password are required.",
+        error: "Email and password are required.",
       });
     }
 
@@ -319,8 +277,7 @@ app.post("/api/auth/login", async (req, res) => {
 
     if (result.rows.length === 0) {
       return res.status(401).json({
-        error:
-          "Invalid email or password.",
+        error: "Invalid email or password.",
       });
     }
 
@@ -333,8 +290,7 @@ app.post("/api/auth/login", async (req, res) => {
 
     if (!passwordCorrect) {
       return res.status(401).json({
-        error:
-          "Invalid email or password.",
+        error: "Invalid email or password.",
       });
     }
 
@@ -349,8 +305,6 @@ app.post("/api/auth/login", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Login error:", error.message);
-
     res.status(500).json({
       error: "Login failed.",
     });
@@ -372,9 +326,7 @@ app.get("/api/workers", async (req, res) => {
     res.json(result.rows);
 
   } catch (error) {
-    res.status(500).json({
-      error: error.message,
-    });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -415,9 +367,7 @@ app.post("/api/workers", async (req, res) => {
     res.status(201).json(result.rows[0]);
 
   } catch (error) {
-    res.status(500).json({
-      error: error.message,
-    });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -432,7 +382,7 @@ app.delete("/api/workers/:id", async (req, res) => {
       [req.params.id]
     );
 
-    if (result.rows.length === 0) {
+    if (!result.rows.length) {
       return res.status(404).json({
         error: "Worker not found.",
       });
@@ -443,9 +393,7 @@ app.delete("/api/workers/:id", async (req, res) => {
     });
 
   } catch (error) {
-    res.status(500).json({
-      error: error.message,
-    });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -464,9 +412,7 @@ app.get("/api/mining-sites", async (req, res) => {
     res.json(result.rows);
 
   } catch (error) {
-    res.status(500).json({
-      error: error.message,
-    });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -501,9 +447,7 @@ app.post("/api/mining-sites", async (req, res) => {
     res.status(201).json(result.rows[0]);
 
   } catch (error) {
-    res.status(500).json({
-      error: error.message,
-    });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -518,21 +462,18 @@ app.delete("/api/mining-sites/:id", async (req, res) => {
       [req.params.id]
     );
 
-    if (result.rows.length === 0) {
+    if (!result.rows.length) {
       return res.status(404).json({
         error: "Mining site not found.",
       });
     }
 
     res.json({
-      message:
-        "Mining site deleted successfully.",
+      message: "Mining site deleted successfully.",
     });
 
   } catch (error) {
-    res.status(500).json({
-      error: error.message,
-    });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -551,9 +492,7 @@ app.get("/api/kaolin-products", async (req, res) => {
     res.json(result.rows);
 
   } catch (error) {
-    res.status(500).json({
-      error: error.message,
-    });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -591,9 +530,41 @@ app.post("/api/kaolin-products", async (req, res) => {
     res.status(201).json(result.rows[0]);
 
   } catch (error) {
-    res.status(500).json({
-      error: error.message,
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete("/api/kaolin-products/:id", async (req, res) => {
+  try {
+    const result = await pool.query(
+      `
+      DELETE FROM kaolin_products
+      WHERE product_id = $1
+      RETURNING *
+      `,
+      [req.params.id]
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({
+        error: "Product not found.",
+      });
+    }
+
+    res.json({
+      message: "Product deleted successfully.",
     });
+
+  } catch (error) {
+
+    if (error.code === "23503") {
+      return res.status(400).json({
+        error:
+          "This product cannot be deleted because it is connected to an existing order.",
+      });
+    }
+
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -612,9 +583,7 @@ app.get("/api/customers", async (req, res) => {
     res.json(result.rows);
 
   } catch (error) {
-    res.status(500).json({
-      error: error.message,
-    });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -641,7 +610,7 @@ app.post("/api/customers", async (req, res) => {
       [
         full_name,
         phone,
-        email || null,
+        email?.trim() || null,
         address || null,
       ]
     );
@@ -649,9 +618,41 @@ app.post("/api/customers", async (req, res) => {
     res.status(201).json(result.rows[0]);
 
   } catch (error) {
-    res.status(500).json({
-      error: error.message,
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete("/api/customers/:id", async (req, res) => {
+  try {
+    const result = await pool.query(
+      `
+      DELETE FROM customers
+      WHERE customer_id = $1
+      RETURNING *
+      `,
+      [req.params.id]
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({
+        error: "Customer not found.",
+      });
+    }
+
+    res.json({
+      message: "Customer deleted successfully.",
     });
+
+  } catch (error) {
+
+    if (error.code === "23503") {
+      return res.status(400).json({
+        error:
+          "This customer cannot be deleted because the customer has an existing order.",
+      });
+    }
+
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -670,9 +671,7 @@ app.get("/api/suppliers", async (req, res) => {
     res.json(result.rows);
 
   } catch (error) {
-    res.status(500).json({
-      error: error.message,
-    });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -701,7 +700,7 @@ app.post("/api/suppliers", async (req, res) => {
       [
         supplier_name,
         phone || null,
-        email || null,
+        email?.trim() || null,
         address || null,
         status || "active",
       ]
@@ -710,9 +709,33 @@ app.post("/api/suppliers", async (req, res) => {
     res.status(201).json(result.rows[0]);
 
   } catch (error) {
-    res.status(500).json({
-      error: error.message,
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete("/api/suppliers/:id", async (req, res) => {
+  try {
+    const result = await pool.query(
+      `
+      DELETE FROM suppliers
+      WHERE supplier_id = $1
+      RETURNING *
+      `,
+      [req.params.id]
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({
+        error: "Supplier not found.",
+      });
+    }
+
+    res.json({
+      message: "Supplier deleted successfully.",
     });
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -726,6 +749,7 @@ app.get("/api/orders", async (req, res) => {
       SELECT
         orders.*,
         customers.full_name AS customer_name,
+        customers.email AS customer_email,
         kaolin_products.product_name AS product_name
       FROM orders
       LEFT JOIN customers
@@ -738,9 +762,7 @@ app.get("/api/orders", async (req, res) => {
     res.json(result.rows);
 
   } catch (error) {
-    res.status(500).json({
-      error: error.message,
-    });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -762,7 +784,7 @@ app.post("/api/orders", async (req, res) => {
       [product_id]
     );
 
-    if (productResult.rows.length === 0) {
+    if (!productResult.rows.length) {
       return res.status(404).json({
         error: "Product not found.",
       });
@@ -798,14 +820,35 @@ app.post("/api/orders", async (req, res) => {
     res.status(201).json(result.rows[0]);
 
   } catch (error) {
-    console.error(
-      "Order creation error:",
-      error.message
-    );
-
     res.status(500).json({
       error: error.message,
     });
+  }
+});
+
+app.delete("/api/orders/:id", async (req, res) => {
+  try {
+    const result = await pool.query(
+      `
+      DELETE FROM orders
+      WHERE order_id = $1
+      RETURNING *
+      `,
+      [req.params.id]
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({
+        error: "Order not found.",
+      });
+    }
+
+    res.json({
+      message: "Order deleted successfully.",
+    });
+
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -824,9 +867,7 @@ app.use("/api", (req, res) => {
 // =====================================================
 
 app.listen(PORT, async () => {
-  console.log(
-    `Backend server running on port ${PORT}`
-  );
+  console.log(`Backend server running on port ${PORT}`);
 
   await startDatabase();
 });
