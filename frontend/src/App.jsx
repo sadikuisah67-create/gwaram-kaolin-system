@@ -1,7 +1,13 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import "./App.css";
 
+// =====================================================
+// API CONFIGURATION
+// =====================================================
+
 const API = "https://gwaram-kaolin-backend.onrender.com/api";
+// For Render hosting later, change the line above to:
+// const API = "https://gwaram-kaolin-backend.onrender.com/api";
 
 // =====================================================
 // MENU ITEMS
@@ -24,24 +30,24 @@ const menuItems = [
 
 async function apiRequest(endpoint, options = {}) {
   const response = await fetch(`${API}${endpoint}`, {
+    ...options,
     headers: {
       "Content-Type": "application/json",
       ...(options.headers || {}),
     },
-    ...options,
   });
 
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(data.error || "Something went wrong.");
+    throw new Error(data.error || data.message || "Something went wrong.");
   }
 
   return data;
 }
 
 // =====================================================
-// HELPERS
+// HELPER FUNCTIONS
 // =====================================================
 
 function getArray(data) {
@@ -64,28 +70,28 @@ function formatCurrency(value) {
 function getStatusClass(status) {
   const value = String(status || "").toLowerCase();
 
-  if (
-    value === "completed" ||
-    value === "active" ||
-    value === "available"
-  ) {
+  if (["completed", "active", "available"].includes(value)) {
     return "status-success";
   }
 
-  if (value === "pending" || value === "inactive") {
+  if (["pending", "inactive"].includes(value)) {
     return "status-warning";
   }
 
-  if (value === "processing" || value === "in progress") {
+  if (["processing", "in progress"].includes(value)) {
     return "status-processing";
   }
 
-  if (value === "cancelled" || value === "unavailable") {
+  if (["cancelled", "unavailable"].includes(value)) {
     return "status-danger";
   }
 
   return "status-processing";
 }
+
+// =====================================================
+// STATUS BADGE COMPONENT
+// =====================================================
 
 function StatusBadge({ status }) {
   return (
@@ -96,13 +102,13 @@ function StatusBadge({ status }) {
 }
 
 // =====================================================
-// MAIN APP
+// MAIN APP COMPONENT
 // =====================================================
 
 function App() {
-  const [loggedIn, setLoggedIn] = useState(
-    !!localStorage.getItem("gwaram_user")
-  );
+  // =====================================================
+  // LOGIN STATES
+  // =====================================================
 
   const [currentUser, setCurrentUser] = useState(() => {
     try {
@@ -113,17 +119,26 @@ function App() {
     }
   });
 
-  const [loginEmail, setLoginEmail] = useState(
-    "admin@gwaramkaolin.com"
-  );
+  const [loggedIn, setLoggedIn] = useState(() => {
+    return Boolean(localStorage.getItem("gwaram_user"));
+  });
 
+  const [loginEmail, setLoginEmail] = useState("admin@gwaramkaolin.com");
   const [loginPassword, setLoginPassword] = useState("Admin123");
   const [loginLoading, setLoginLoading] = useState(false);
 
-  const [activePage, setActivePage] = useState("Dashboard");
+  // =====================================================
+  // GENERAL STATES
+  // =====================================================
 
+  const [activePage, setActivePage] = useState("Dashboard");
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("success");
+  const [loading, setLoading] = useState(false);
+
+  // =====================================================
+  // DATA STATES
+  // =====================================================
 
   const [workers, setWorkers] = useState([]);
   const [miningSites, setMiningSites] = useState([]);
@@ -132,10 +147,8 @@ function App() {
   const [suppliers, setSuppliers] = useState([]);
   const [orders, setOrders] = useState([]);
 
-  const [loading, setLoading] = useState(false);
-
   // =====================================================
-  // FORMS
+  // FORM STATES
   // =====================================================
 
   const [workerForm, setWorkerForm] = useState({
@@ -193,7 +206,7 @@ function App() {
 
     window.setTimeout(() => {
       setMessage("");
-    }, 4000);
+    }, 5000);
   }
 
   // =====================================================
@@ -204,7 +217,14 @@ function App() {
     setLoading(true);
 
     try {
-      const results = await Promise.all([
+      const [
+        workersData,
+        sitesData,
+        productsData,
+        customersData,
+        suppliersData,
+        ordersData,
+      ] = await Promise.all([
         apiRequest("/workers"),
         apiRequest("/mining-sites"),
         apiRequest("/kaolin-products"),
@@ -213,21 +233,18 @@ function App() {
         apiRequest("/orders"),
       ]);
 
-      setWorkers(getArray(results[0]));
-      setMiningSites(getArray(results[1]));
-      setProducts(getArray(results[2]));
-      setCustomers(getArray(results[3]));
-      setSuppliers(getArray(results[4]));
-      setOrders(getArray(results[5]));
+      setWorkers(getArray(workersData));
+      setMiningSites(getArray(sitesData));
+      setProducts(getArray(productsData));
+      setCustomers(getArray(customersData));
+      setSuppliers(getArray(suppliersData));
+      setOrders(getArray(ordersData));
 
       if (showSuccess) {
         showMessage("System data refreshed successfully.");
       }
     } catch (error) {
-      showMessage(
-        `Unable to load system data: ${error.message}`,
-        "error"
-      );
+      showMessage(`Unable to load system data: ${error.message}`, "error");
     } finally {
       setLoading(false);
     }
@@ -257,12 +274,11 @@ function App() {
         }),
       });
 
-      localStorage.setItem(
-        "gwaram_user",
-        JSON.stringify(data.user)
-      );
+      const user = data.user || data;
 
-      setCurrentUser(data.user);
+      localStorage.setItem("gwaram_user", JSON.stringify(user));
+
+      setCurrentUser(user);
       setLoggedIn(true);
 
       showMessage("Login successful.");
@@ -279,8 +295,9 @@ function App() {
 
   function handleLogout() {
     localStorage.removeItem("gwaram_user");
-    setLoggedIn(false);
+
     setCurrentUser(null);
+    setLoggedIn(false);
     setActivePage("Dashboard");
     setMessage("");
   }
@@ -310,14 +327,16 @@ function App() {
       });
 
       showMessage("Worker added successfully.");
-      loadAllData();
+      await loadAllData();
     } catch (error) {
       showMessage(error.message, "error");
     }
   }
 
   async function deleteWorker(id) {
-    if (!window.confirm("Delete this worker?")) return;
+    if (!window.confirm("Are you sure you want to delete this worker?")) {
+      return;
+    }
 
     try {
       await apiRequest(`/workers/${id}`, {
@@ -325,7 +344,7 @@ function App() {
       });
 
       showMessage("Worker deleted successfully.");
-      loadAllData();
+      await loadAllData();
     } catch (error) {
       showMessage(error.message, "error");
     }
@@ -352,14 +371,16 @@ function App() {
       });
 
       showMessage("Mining site added successfully.");
-      loadAllData();
+      await loadAllData();
     } catch (error) {
       showMessage(error.message, "error");
     }
   }
 
   async function deleteMiningSite(id) {
-    if (!window.confirm("Delete this mining site?")) return;
+    if (!window.confirm("Are you sure you want to delete this mining site?")) {
+      return;
+    }
 
     try {
       await apiRequest(`/mining-sites/${id}`, {
@@ -367,7 +388,7 @@ function App() {
       });
 
       showMessage("Mining site deleted successfully.");
-      loadAllData();
+      await loadAllData();
     } catch (error) {
       showMessage(error.message, "error");
     }
@@ -395,14 +416,16 @@ function App() {
       });
 
       showMessage("Product added successfully.");
-      loadAllData();
+      await loadAllData();
     } catch (error) {
       showMessage(error.message, "error");
     }
   }
 
   async function deleteProduct(id) {
-    if (!window.confirm("Delete this product?")) return;
+    if (!window.confirm("Are you sure you want to delete this product?")) {
+      return;
+    }
 
     try {
       await apiRequest(`/kaolin-products/${id}`, {
@@ -410,9 +433,13 @@ function App() {
       });
 
       showMessage("Product deleted successfully.");
-      loadAllData();
+      await loadAllData();
     } catch (error) {
-      showMessage(error.message, "error");
+      showMessage(
+        error.message ||
+          "Cannot delete this product because it is connected to an existing order.",
+        "error"
+      );
     }
   }
 
@@ -437,14 +464,16 @@ function App() {
       });
 
       showMessage("Customer added successfully.");
-      loadAllData();
+      await loadAllData();
     } catch (error) {
       showMessage(error.message, "error");
     }
   }
 
   async function deleteCustomer(id) {
-    if (!window.confirm("Delete this customer?")) return;
+    if (!window.confirm("Are you sure you want to delete this customer?")) {
+      return;
+    }
 
     try {
       await apiRequest(`/customers/${id}`, {
@@ -452,9 +481,13 @@ function App() {
       });
 
       showMessage("Customer deleted successfully.");
-      loadAllData();
+      await loadAllData();
     } catch (error) {
-      showMessage(error.message, "error");
+      showMessage(
+        error.message ||
+          "Cannot delete this customer because the customer has an existing order.",
+        "error"
+      );
     }
   }
 
@@ -480,14 +513,16 @@ function App() {
       });
 
       showMessage("Supplier added successfully.");
-      loadAllData();
+      await loadAllData();
     } catch (error) {
       showMessage(error.message, "error");
     }
   }
 
   async function deleteSupplier(id) {
-    if (!window.confirm("Delete this supplier?")) return;
+    if (!window.confirm("Are you sure you want to delete this supplier?")) {
+      return;
+    }
 
     try {
       await apiRequest(`/suppliers/${id}`, {
@@ -495,7 +530,7 @@ function App() {
       });
 
       showMessage("Supplier deleted successfully.");
-      loadAllData();
+      await loadAllData();
     } catch (error) {
       showMessage(error.message, "error");
     }
@@ -506,9 +541,7 @@ function App() {
   // =====================================================
 
   const selectedProduct = products.find(
-    (product) =>
-      String(product.product_id) ===
-      String(orderForm.product_id)
+    (product) => String(product.product_id) === String(orderForm.product_id)
   );
 
   const calculatedTotalAmount =
@@ -531,15 +564,17 @@ function App() {
         order_status: "pending",
       });
 
-      showMessage("Order added successfully.");
-      loadAllData();
+      showMessage("Order created successfully.");
+      await loadAllData();
     } catch (error) {
       showMessage(error.message, "error");
     }
   }
 
   async function deleteOrder(id) {
-    if (!window.confirm("Delete this order?")) return;
+    if (!window.confirm("Are you sure you want to delete this order?")) {
+      return;
+    }
 
     try {
       await apiRequest(`/orders/${id}`, {
@@ -547,7 +582,7 @@ function App() {
       });
 
       showMessage("Order deleted successfully.");
-      loadAllData();
+      await loadAllData();
     } catch (error) {
       showMessage(error.message, "error");
     }
@@ -561,7 +596,9 @@ function App() {
     return (
       <div className="login-page">
         <div className="login-card">
-          <div className="login-logo">GK</div>
+          <div className="login-logo">
+            <i className="fa-solid fa-mountain"></i>
+          </div>
 
           <h1>Gwaram Kaolin</h1>
 
@@ -575,8 +612,8 @@ function App() {
             <div
               className={
                 messageType === "error"
-                  ? "error-message"
-                  : "success-message"
+                  ? "login-message error-message"
+                  : "login-message success-message"
               }
             >
               {message}
@@ -589,9 +626,7 @@ function App() {
             <input
               type="email"
               value={loginEmail}
-              onChange={(event) =>
-                setLoginEmail(event.target.value)
-              }
+              onChange={(event) => setLoginEmail(event.target.value)}
               required
             />
 
@@ -600,9 +635,7 @@ function App() {
             <input
               type="password"
               value={loginPassword}
-              onChange={(event) =>
-                setLoginPassword(event.target.value)
-              }
+              onChange={(event) => setLoginPassword(event.target.value)}
               required
             />
 
@@ -611,9 +644,8 @@ function App() {
               className="login-button"
               disabled={loginLoading}
             >
-              {loginLoading
-                ? "Signing In..."
-                : "Login to System"}
+              <i className="fa-solid fa-right-to-bracket"></i>
+              {loginLoading ? " Signing In..." : " Login to System"}
             </button>
           </form>
         </div>
@@ -627,8 +659,7 @@ function App() {
 
   function renderDashboard() {
     const totalOrderAmount = orders.reduce(
-      (sum, order) =>
-        sum + Number(order.total_amount || 0),
+      (sum, order) => sum + Number(order.total_amount || 0),
       0
     );
 
@@ -637,41 +668,50 @@ function App() {
         <div className="dashboard-heading">
           <div>
             <h1>Dashboard</h1>
+
             <p>
-              Overview of the Gwaram Kaolin mining
-              management system.
+              Overview of the Gwaram Kaolin mining management system.
             </p>
           </div>
 
-          <button
-            onClick={() => loadAllData(true)}
-            disabled={loading}
-          >
-            <i className="fa-solid fa-rotate"></i>{" "}
-            {loading ? "Refreshing..." : "Refresh Data"}
+          <button onClick={() => loadAllData(true)} disabled={loading}>
+            <i className="fa-solid fa-rotate"></i>
+            {loading ? " Refreshing..." : " Refresh Data"}
           </button>
         </div>
 
         <div className="cards">
           <div className="card">
+            <div className="card-icon">
+              <i className="fa-solid fa-helmet-safety"></i>
+            </div>
             <h3>Workers</h3>
             <strong>{workers.length}</strong>
             <span>Registered workers</span>
           </div>
 
           <div className="card">
+            <div className="card-icon">
+              <i className="fa-solid fa-mountain"></i>
+            </div>
             <h3>Mining Sites</h3>
             <strong>{miningSites.length}</strong>
             <span>Registered mining sites</span>
           </div>
 
           <div className="card">
+            <div className="card-icon">
+              <i className="fa-solid fa-box"></i>
+            </div>
             <h3>Products</h3>
             <strong>{products.length}</strong>
             <span>Available products</span>
           </div>
 
           <div className="card">
+            <div className="card-icon">
+              <i className="fa-solid fa-file-invoice"></i>
+            </div>
             <h3>Orders</h3>
             <strong>{orders.length}</strong>
             <span>Customer orders</span>
@@ -679,14 +719,15 @@ function App() {
         </div>
 
         <div className="dashboard-summary">
-          <h2>System Summary</h2>
+          <div>
+            <h2>System Summary</h2>
 
-          <p>
-            This system supports the management of artisanal
-            kaolin mining operations in Gwaram by organizing
-            workers, mining sites, products, customers,
-            suppliers and customer orders.
-          </p>
+            <p>
+              This system supports the management of artisanal kaolin mining
+              operations in Gwaram by organizing workers, mining sites,
+              products, customers, suppliers and orders.
+            </p>
+          </div>
 
           <div className="order-value">
             <span>Total Order Value</span>
@@ -746,6 +787,7 @@ function App() {
 
           <input
             type="number"
+            step="0.01"
             placeholder="Daily Rate"
             value={workerForm.daily_rate}
             onChange={(event) =>
@@ -769,16 +811,16 @@ function App() {
             <option value="">Select Mining Site</option>
 
             {miningSites.map((site) => (
-              <option
-                key={site.site_id}
-                value={site.site_id}
-              >
+              <option key={site.site_id} value={site.site_id}>
                 {site.site_name}
               </option>
             ))}
           </select>
 
-          <button type="submit">Add Worker</button>
+          <button type="submit">
+            <i className="fa-solid fa-plus"></i>
+            Add Worker
+          </button>
         </form>
 
         <div className="table-wrapper">
@@ -806,20 +848,16 @@ function App() {
                     <td>{worker.worker_type}</td>
                     <td>{worker.skill}</td>
                     <td>
-                      <StatusBadge
-                        status={worker.availability}
-                      />
+                      <StatusBadge status={worker.availability} />
                     </td>
-                    <td>
-                      {formatCurrency(worker.daily_rate)}
-                    </td>
+                    <td>{formatCurrency(worker.daily_rate)}</td>
                     <td>
                       <button
+                        type="button"
                         className="delete-btn"
-                        onClick={() =>
-                          deleteWorker(worker.worker_id)
-                        }
+                        onClick={() => deleteWorker(worker.worker_id)}
                       >
+                        <i className="fa-solid fa-trash"></i>
                         Delete
                       </button>
                     </td>
@@ -834,7 +872,7 @@ function App() {
   }
 
   // =====================================================
-  // SIMPLE DATA PAGES
+  // MINING SITES PAGE
   // =====================================================
 
   function renderMiningSites() {
@@ -891,7 +929,10 @@ function App() {
             <option value="inactive">Inactive</option>
           </select>
 
-          <button type="submit">Add Site</button>
+          <button type="submit">
+            <i className="fa-solid fa-plus"></i>
+            Add Site
+          </button>
         </form>
 
         <div className="table-wrapper">
@@ -901,38 +942,50 @@ function App() {
                 <th>ID</th>
                 <th>Site Name</th>
                 <th>Location</th>
+                <th>Description</th>
                 <th>Status</th>
                 <th>Action</th>
               </tr>
             </thead>
 
             <tbody>
-              {miningSites.map((site) => (
-                <tr key={site.site_id}>
-                  <td>{site.site_id}</td>
-                  <td>{site.site_name}</td>
-                  <td>{site.location}</td>
-                  <td>
-                    <StatusBadge status={site.status} />
-                  </td>
-                  <td>
-                    <button
-                      className="delete-btn"
-                      onClick={() =>
-                        deleteMiningSite(site.site_id)
-                      }
-                    >
-                      Delete
-                    </button>
-                  </td>
+              {miningSites.length === 0 ? (
+                <tr>
+                  <td colSpan="6">No mining sites found.</td>
                 </tr>
-              ))}
+              ) : (
+                miningSites.map((site) => (
+                  <tr key={site.site_id}>
+                    <td>{site.site_id}</td>
+                    <td>{site.site_name}</td>
+                    <td>{site.location}</td>
+                    <td>{site.description || "-"}</td>
+                    <td>
+                      <StatusBadge status={site.status} />
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="delete-btn"
+                        onClick={() => deleteMiningSite(site.site_id)}
+                      >
+                        <i className="fa-solid fa-trash"></i>
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
       </div>
     );
   }
+
+  // =====================================================
+  // PRODUCTS PAGE
+  // =====================================================
 
   function renderProducts() {
     return (
@@ -966,6 +1019,7 @@ function App() {
 
           <input
             type="number"
+            step="0.01"
             placeholder="Quantity Available"
             value={productForm.quantity_available}
             onChange={(event) =>
@@ -1005,7 +1059,10 @@ function App() {
             required
           />
 
-          <button type="submit">Add Product</button>
+          <button type="submit">
+            <i className="fa-solid fa-plus"></i>
+            Add Product
+          </button>
         </form>
 
         <div className="table-wrapper">
@@ -1016,41 +1073,49 @@ function App() {
                 <th>Product</th>
                 <th>Grade</th>
                 <th>Quantity</th>
-                <th>Price</th>
+                <th>Unit</th>
+                <th>Price Per Unit</th>
                 <th>Action</th>
               </tr>
             </thead>
 
             <tbody>
-              {products.map((product) => (
-                <tr key={product.product_id}>
-                  <td>{product.product_id}</td>
-                  <td>{product.product_name}</td>
-                  <td>{product.grade}</td>
-                  <td>
-                    {formatNumber(product.quantity_available)}
-                  </td>
-                  <td>
-                    {formatCurrency(product.price_per_unit)}
-                  </td>
-                  <td>
-                    <button
-                      className="delete-btn"
-                      onClick={() =>
-                        deleteProduct(product.product_id)
-                      }
-                    >
-                      Delete
-                    </button>
-                  </td>
+              {products.length === 0 ? (
+                <tr>
+                  <td colSpan="7">No products found.</td>
                 </tr>
-              ))}
+              ) : (
+                products.map((product) => (
+                  <tr key={product.product_id}>
+                    <td>{product.product_id}</td>
+                    <td>{product.product_name}</td>
+                    <td>{product.grade}</td>
+                    <td>{formatNumber(product.quantity_available)}</td>
+                    <td>{product.unit}</td>
+                    <td>{formatCurrency(product.price_per_unit)}</td>
+                    <td>
+                      <button
+                        type="button"
+                        className="delete-btn"
+                        onClick={() => deleteProduct(product.product_id)}
+                      >
+                        <i className="fa-solid fa-trash"></i>
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
       </div>
     );
   }
+
+  // =====================================================
+  // CUSTOMERS PAGE
+  // =====================================================
 
   function renderCustomers() {
     return (
@@ -1083,8 +1148,8 @@ function App() {
           />
 
           <input
-            placeholder="Email"
             type="email"
+            placeholder="Email"
             value={customerForm.email}
             onChange={(event) =>
               setCustomerForm({
@@ -1105,7 +1170,10 @@ function App() {
             }
           />
 
-          <button type="submit">Add Customer</button>
+          <button type="submit">
+            <i className="fa-solid fa-plus"></i>
+            Add Customer
+          </button>
         </form>
 
         <div className="table-wrapper">
@@ -1116,35 +1184,47 @@ function App() {
                 <th>Name</th>
                 <th>Phone</th>
                 <th>Email</th>
+                <th>Address</th>
                 <th>Action</th>
               </tr>
             </thead>
 
             <tbody>
-              {customers.map((customer) => (
-                <tr key={customer.customer_id}>
-                  <td>{customer.customer_id}</td>
-                  <td>{customer.full_name}</td>
-                  <td>{customer.phone}</td>
-                  <td>{customer.email || "-"}</td>
-                  <td>
-                    <button
-                      className="delete-btn"
-                      onClick={() =>
-                        deleteCustomer(customer.customer_id)
-                      }
-                    >
-                      Delete
-                    </button>
-                  </td>
+              {customers.length === 0 ? (
+                <tr>
+                  <td colSpan="6">No customers found.</td>
                 </tr>
-              ))}
+              ) : (
+                customers.map((customer) => (
+                  <tr key={customer.customer_id}>
+                    <td>{customer.customer_id}</td>
+                    <td>{customer.full_name}</td>
+                    <td>{customer.phone}</td>
+                    <td>{customer.email || "-"}</td>
+                    <td>{customer.address || "-"}</td>
+                    <td>
+                      <button
+                        type="button"
+                        className="delete-btn"
+                        onClick={() => deleteCustomer(customer.customer_id)}
+                      >
+                        <i className="fa-solid fa-trash"></i>
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
       </div>
     );
   }
+
+  // =====================================================
+  // SUPPLIERS PAGE
+  // =====================================================
 
   function renderSuppliers() {
     return (
@@ -1176,8 +1256,8 @@ function App() {
           />
 
           <input
-            placeholder="Email"
             type="email"
+            placeholder="Email"
             value={supplierForm.email}
             onChange={(event) =>
               setSupplierForm({
@@ -1198,46 +1278,78 @@ function App() {
             }
           />
 
-          <button type="submit">Add Supplier</button>
+          <select
+            value={supplierForm.status}
+            onChange={(event) =>
+              setSupplierForm({
+                ...supplierForm,
+                status: event.target.value,
+              })
+            }
+          >
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+
+          <button type="submit">
+            <i className="fa-solid fa-plus"></i>
+            Add Supplier
+          </button>
         </form>
 
         <div className="table-wrapper">
-          <table>
+          <table className="suppliers-table">
             <thead>
               <tr>
                 <th>ID</th>
                 <th>Supplier</th>
                 <th>Phone</th>
                 <th>Email</th>
+                <th>Address</th>
+                <th>Status</th>
                 <th>Action</th>
               </tr>
             </thead>
 
             <tbody>
-              {suppliers.map((supplier) => (
-                <tr key={supplier.supplier_id}>
-                  <td>{supplier.supplier_id}</td>
-                  <td>{supplier.supplier_name}</td>
-                  <td>{supplier.phone || "-"}</td>
-                  <td>{supplier.email || "-"}</td>
-                  <td>
-                    <button
-                      className="delete-btn"
-                      onClick={() =>
-                        deleteSupplier(supplier.supplier_id)
-                      }
-                    >
-                      Delete
-                    </button>
-                  </td>
+              {suppliers.length === 0 ? (
+                <tr>
+                  <td colSpan="7">No suppliers found.</td>
                 </tr>
-              ))}
+              ) : (
+                suppliers.map((supplier) => (
+                  <tr key={supplier.supplier_id}>
+                    <td>{supplier.supplier_id}</td>
+                    <td>{supplier.supplier_name}</td>
+                    <td>{supplier.phone || "-"}</td>
+                    <td>{supplier.email || "-"}</td>
+                    <td>{supplier.address || "-"}</td>
+                    <td>
+                      <StatusBadge status={supplier.status} />
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="delete-btn"
+                        onClick={() => deleteSupplier(supplier.supplier_id)}
+                      >
+                        <i className="fa-solid fa-trash"></i>
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
       </div>
     );
   }
+
+  // =====================================================
+  // ORDERS PAGE
+  // =====================================================
 
   function renderOrders() {
     return (
@@ -1292,6 +1404,7 @@ function App() {
           <input
             type="number"
             min="1"
+            step="0.01"
             placeholder="Quantity"
             value={orderForm.quantity}
             onChange={(event) =>
@@ -1319,64 +1432,78 @@ function App() {
           </select>
 
           <div className="total-display">
+            <i className="fa-solid fa-calculator"></i>
             Total: {formatCurrency(calculatedTotalAmount)}
           </div>
 
-          <button type="submit">Create Order</button>
+          <button type="submit">
+            <i className="fa-solid fa-plus"></i>
+            Create Order
+          </button>
         </form>
 
         <div className="table-wrapper">
-          <table>
+          <table className="orders-table">
             <thead>
               <tr>
                 <th>ID</th>
                 <th>Customer</th>
                 <th>Product</th>
                 <th>Quantity</th>
-                <th>Total</th>
+                <th>Total Amount</th>
                 <th>Status</th>
                 <th>Action</th>
               </tr>
             </thead>
 
             <tbody>
-              {orders.map((order) => (
-                <tr key={order.order_id}>
-                  <td>{order.order_id}</td>
-                  <td>{order.customer_name || "-"}</td>
-                  <td>{order.product_name || "-"}</td>
-                  <td>{formatNumber(order.quantity)}</td>
-                  <td>
-                    {formatCurrency(order.total_amount)}
-                  </td>
-                  <td>
-                    <StatusBadge
-                      status={order.order_status}
-                    />
-                  </td>
-                  <td>
-                    <button
-                      className="delete-btn"
-                      onClick={() =>
-                        deleteOrder(order.order_id)
-                      }
-                    >
-                      Delete
-                    </button>
-                  </td>
+              {orders.length === 0 ? (
+                <tr>
+                  <td colSpan="7">No orders found.</td>
                 </tr>
-              ))}
+              ) : (
+                orders.map((order) => (
+                  <tr key={order.order_id}>
+                    <td>{order.order_id}</td>
+                    <td>{order.customer_name || "-"}</td>
+                    <td>{order.product_name || "-"}</td>
+                    <td>{formatNumber(order.quantity)}</td>
+                    <td>{formatCurrency(order.total_amount)}</td>
+                    <td>
+                      <StatusBadge status={order.order_status} />
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="delete-btn"
+                        onClick={() => deleteOrder(order.order_id)}
+                      >
+                        <i className="fa-solid fa-trash"></i>
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
+
+        <p className="dependency-note">
+          <strong>Important:</strong> A customer or product connected to an
+          existing order cannot be deleted until the related order is deleted.
+        </p>
       </div>
     );
   }
 
+  // =====================================================
+  // REPORTS PAGE
+  // =====================================================
+
   function renderReports() {
     const totalOrderAmount = orders.reduce(
-      (sum, order) =>
-        sum + Number(order.total_amount || 0),
+      (sum, order) => sum + Number(order.total_amount || 0),
       0
     );
 
@@ -1384,32 +1511,63 @@ function App() {
       <div className="reports-box">
         <h1>System Reports</h1>
 
+        <p>Summary of all available records in the system.</p>
+
         <div className="report-cards">
           <div className="report-card">
+            <span>
+              <i className="fa-solid fa-helmet-safety"></i>
+            </span>
             <h3>Total Workers</h3>
             <strong>{workers.length}</strong>
           </div>
 
           <div className="report-card">
+            <span>
+              <i className="fa-solid fa-mountain"></i>
+            </span>
             <h3>Total Mining Sites</h3>
             <strong>{miningSites.length}</strong>
           </div>
 
           <div className="report-card">
+            <span>
+              <i className="fa-solid fa-box"></i>
+            </span>
             <h3>Total Products</h3>
             <strong>{products.length}</strong>
           </div>
 
           <div className="report-card">
+            <span>
+              <i className="fa-solid fa-users"></i>
+            </span>
+            <h3>Total Customers</h3>
+            <strong>{customers.length}</strong>
+          </div>
+
+          <div className="report-card">
+            <span>
+              <i className="fa-solid fa-truck"></i>
+            </span>
+            <h3>Total Suppliers</h3>
+            <strong>{suppliers.length}</strong>
+          </div>
+
+          <div className="report-card">
+            <span>
+              <i className="fa-solid fa-file-invoice"></i>
+            </span>
             <h3>Total Orders</h3>
             <strong>{orders.length}</strong>
           </div>
 
           <div className="report-card">
+            <span>
+              <i className="fa-solid fa-money-bill-wave"></i>
+            </span>
             <h3>Total Order Value</h3>
-            <strong>
-              {formatCurrency(totalOrderAmount)}
-            </strong>
+            <strong>{formatCurrency(totalOrderAmount)}</strong>
           </div>
         </div>
       </div>
@@ -1431,14 +1589,14 @@ function App() {
       case "Products":
         return renderProducts();
 
+      case "Orders":
+        return renderOrders();
+
       case "Customers":
         return renderCustomers();
 
       case "Suppliers":
         return renderSuppliers();
-
-      case "Orders":
-        return renderOrders();
 
       case "Reports":
         return renderReports();
@@ -1449,25 +1607,26 @@ function App() {
   }
 
   // =====================================================
-  // MAIN APPLICATION
+  // MAIN APPLICATION LAYOUT
   // =====================================================
 
   return (
     <div className="app">
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-logo">GK</div>
+          <div className="brand-logo">
+            <i className="fa-solid fa-mountain"></i>
+          </div>
 
           <h2>Gwaram Kaolin</h2>
 
-          <p>
-            Supply Chain and Labor Management System
-          </p>
+          <p>Supply Chain and Labor Management System</p>
         </div>
 
         <nav>
           {menuItems.map((item) => (
             <button
+              type="button"
               key={item.name}
               className={`nav-item ${
                 activePage === item.name ? "active" : ""
@@ -1490,37 +1649,29 @@ function App() {
           <div>
             <h2>{activePage}</h2>
 
-            <p>
-              Web-Based Supply Chain and Labor Management
-              System
-            </p>
+            <p>Web-Based Supply Chain and Labor Management System</p>
           </div>
 
           <div className="admin-area">
             <div className="admin-avatar">
-              {currentUser?.full_name
-                ? currentUser.full_name
-                    .charAt(0)
-                    .toUpperCase()
-                : "A"}
+              <i className="fa-solid fa-user"></i>
             </div>
 
             <div>
               <strong>
-                {currentUser?.full_name || "Administrator"}
+                {currentUser?.full_name || "System Administrator"}
               </strong>
 
-              <small>
-                {currentUser?.role || "admin"}
-              </small>
+              <small>{currentUser?.role || "admin"}</small>
             </div>
 
             <button
+              type="button"
               className="logout-btn"
               onClick={handleLogout}
             >
               <i className="fa-solid fa-right-from-bracket"></i>
-              {" "}Logout
+              Logout
             </button>
           </div>
         </header>
@@ -1537,9 +1688,7 @@ function App() {
           </div>
         )}
 
-        <div className="page-content">
-          {renderPage()}
-        </div>
+        <div className="page-content">{renderPage()}</div>
       </main>
     </div>
   );
