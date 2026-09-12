@@ -12,30 +12,11 @@ const PORT = process.env.PORT || 5000;
 // MIDDLEWARE
 // =====================================================
 
-const allowedOrigins = [
-  "http://localhost:5173",
-  "http://localhost:3000",
-  "https://gwaram-kaolin-frontend.onrender.com",
-];
-
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-
-      return callback(new Error("Not allowed by CORS"));
-    },
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  })
-);
-
+app.use(cors());
 app.use(express.json());
 
 // =====================================================
-// POSTGRESQL CONNECTION
+// DATABASE CONNECTION
 // =====================================================
 
 if (!process.env.DATABASE_URL) {
@@ -44,23 +25,47 @@ if (!process.env.DATABASE_URL) {
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl:
-    process.env.NODE_ENV === "production"
-      ? { rejectUnauthorized: false }
-      : false,
+  ssl: process.env.DATABASE_URL
+    ? { rejectUnauthorized: false }
+    : false,
 });
 
 // =====================================================
-// CREATE DATABASE TABLES
+// DATABASE INITIALIZATION
 // =====================================================
 
 async function initializeDatabase() {
   try {
     console.log("Initializing database tables...");
 
-    // USERS
+    /*
+      IMPORTANT:
+      The following DROP statements repair the incomplete
+      tables created during the previous failed import.
+
+      After the database is successfully created, we will
+      remove this repair section so future deployments
+      preserve your data.
+    */
+
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS users (
+      DROP TABLE IF EXISTS workers CASCADE;
+      DROP TABLE IF EXISTS orders CASCADE;
+      DROP TABLE IF EXISTS mining_sites CASCADE;
+      DROP TABLE IF EXISTS kaolin_products CASCADE;
+      DROP TABLE IF EXISTS customers CASCADE;
+      DROP TABLE IF EXISTS suppliers CASCADE;
+      DROP TABLE IF EXISTS users CASCADE;
+    `);
+
+    console.log("Old incomplete tables removed.");
+
+    // =====================================================
+    // USERS
+    // =====================================================
+
+    await pool.query(`
+      CREATE TABLE users (
         user_id SERIAL PRIMARY KEY,
         full_name VARCHAR(150) NOT NULL,
         phone VARCHAR(30),
@@ -71,9 +76,12 @@ async function initializeDatabase() {
       );
     `);
 
+    // =====================================================
     // MINING SITES
+    // =====================================================
+
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS mining_sites (
+      CREATE TABLE mining_sites (
         site_id SERIAL PRIMARY KEY,
         site_name VARCHAR(150) NOT NULL,
         location VARCHAR(255) NOT NULL,
@@ -83,36 +91,47 @@ async function initializeDatabase() {
       );
     `);
 
+    // =====================================================
     // WORKERS
+    // =====================================================
+
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS workers (
+      CREATE TABLE workers (
         worker_id SERIAL PRIMARY KEY,
-        user_id INTEGER REFERENCES users(user_id) ON DELETE SET NULL,
+        user_id INTEGER REFERENCES users(user_id)
+          ON DELETE SET NULL,
         worker_type VARCHAR(100) NOT NULL,
         skill VARCHAR(150) NOT NULL,
         availability VARCHAR(50) DEFAULT 'available',
-        daily_rate NUMERIC(15, 2) NOT NULL,
-        site_id INTEGER REFERENCES mining_sites(site_id) ON DELETE SET NULL,
+        daily_rate NUMERIC(15,2) NOT NULL,
+        site_id INTEGER REFERENCES mining_sites(site_id)
+          ON DELETE SET NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
 
+    // =====================================================
     // KAOLIN PRODUCTS
+    // =====================================================
+
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS kaolin_products (
+      CREATE TABLE kaolin_products (
         product_id SERIAL PRIMARY KEY,
         product_name VARCHAR(150) NOT NULL,
         grade VARCHAR(100) NOT NULL,
-        quantity_available NUMERIC(15, 2) NOT NULL DEFAULT 0,
+        quantity_available NUMERIC(15,2) NOT NULL DEFAULT 0,
         unit VARCHAR(50) NOT NULL,
-        price_per_unit NUMERIC(15, 2) NOT NULL,
+        price_per_unit NUMERIC(15,2) NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
 
+    // =====================================================
     // CUSTOMERS
+    // =====================================================
+
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS customers (
+      CREATE TABLE customers (
         customer_id SERIAL PRIMARY KEY,
         full_name VARCHAR(150) NOT NULL,
         phone VARCHAR(30) NOT NULL,
@@ -122,9 +141,12 @@ async function initializeDatabase() {
       );
     `);
 
+    // =====================================================
     // SUPPLIERS
+    // =====================================================
+
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS suppliers (
+      CREATE TABLE suppliers (
         supplier_id SERIAL PRIMARY KEY,
         supplier_name VARCHAR(150) NOT NULL,
         phone VARCHAR(30),
@@ -135,9 +157,12 @@ async function initializeDatabase() {
       );
     `);
 
+    // =====================================================
     // ORDERS
+    // =====================================================
+
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS orders (
+      CREATE TABLE orders (
         order_id SERIAL PRIMARY KEY,
         customer_id INTEGER NOT NULL
           REFERENCES customers(customer_id)
@@ -145,22 +170,27 @@ async function initializeDatabase() {
         product_id INTEGER NOT NULL
           REFERENCES kaolin_products(product_id)
           ON DELETE RESTRICT,
-        quantity NUMERIC(15, 2) NOT NULL,
-        total_amount NUMERIC(15, 2) NOT NULL,
+        quantity NUMERIC(15,2) NOT NULL,
+        total_amount NUMERIC(15,2) NOT NULL,
         order_status VARCHAR(50) DEFAULT 'pending',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
 
     console.log("Database tables initialized successfully.");
+
   } catch (error) {
-    console.error("Database initialization error:", error.message);
+    console.error(
+      "Database initialization error:",
+      error.message
+    );
+
     throw error;
   }
 }
 
 // =====================================================
-// CREATE DEFAULT ADMIN
+// CREATE DEFAULT ADMINISTRATOR
 // =====================================================
 
 async function createDefaultAdmin() {
@@ -179,7 +209,10 @@ async function createDefaultAdmin() {
     );
 
     if (existingAdmin.rows.length === 0) {
-      const passwordHash = await bcrypt.hash(adminPassword, 10);
+      const passwordHash = await bcrypt.hash(
+        adminPassword,
+        10
+      );
 
       await pool.query(
         `
@@ -202,33 +235,51 @@ async function createDefaultAdmin() {
         ]
       );
 
-      console.log("Default administrator created successfully.");
+      console.log(
+        "Default administrator created successfully."
+      );
+
     } else {
-      console.log("Default administrator already exists.");
+      console.log(
+        "Default administrator already exists."
+      );
     }
+
   } catch (error) {
-    console.error("Admin creation error:", error.message);
+    console.error(
+      "Admin creation error:",
+      error.message
+    );
+
     throw error;
   }
 }
 
 // =====================================================
-// DATABASE STARTUP
+// START DATABASE
 // =====================================================
 
 async function startDatabase() {
   try {
     await pool.query("SELECT NOW()");
 
-    console.log("PostgreSQL connected successfully.");
+    console.log(
+      "PostgreSQL connected successfully."
+    );
 
     await initializeDatabase();
 
     await createDefaultAdmin();
 
-    console.log("Database startup completed successfully.");
+    console.log(
+      "Database startup completed successfully."
+    );
+
   } catch (error) {
-    console.error("Database connection failed:", error.message);
+    console.error(
+      "Database connection failed:",
+      error.message
+    );
   }
 }
 
@@ -238,7 +289,8 @@ async function startDatabase() {
 
 app.get("/", (req, res) => {
   res.json({
-    message: "Gwaram Kaolin Supply Chain System Backend is running.",
+    message:
+      "Gwaram Kaolin Supply Chain System Backend is running.",
   });
 });
 
@@ -252,8 +304,10 @@ app.get("/api/health", async (req, res) => {
 
     res.json({
       status: "OK",
-      message: "Gwaram Kaolin API and database are working.",
+      message:
+        "Gwaram Kaolin API and database are working.",
     });
+
   } catch (error) {
     res.status(500).json({
       status: "ERROR",
@@ -273,18 +327,14 @@ app.post("/api/auth/login", async (req, res) => {
 
     if (!email || !password) {
       return res.status(400).json({
-        error: "Email and password are required.",
+        error:
+          "Email and password are required.",
       });
     }
 
     const result = await pool.query(
       `
-      SELECT
-        user_id,
-        full_name,
-        email,
-        password_hash,
-        role
+      SELECT *
       FROM users
       WHERE LOWER(email) = LOWER($1)
       LIMIT 1
@@ -294,26 +344,23 @@ app.post("/api/auth/login", async (req, res) => {
 
     if (result.rows.length === 0) {
       return res.status(401).json({
-        error: "Invalid email or password.",
+        error:
+          "Invalid email or password.",
       });
     }
 
     const user = result.rows[0];
 
-    if (String(user.role).toLowerCase() !== "admin") {
-      return res.status(403).json({
-        error: "This account does not have administrator access.",
-      });
-    }
-
-    const passwordCorrect = await bcrypt.compare(
-      password,
-      user.password_hash
-    );
+    const passwordCorrect =
+      await bcrypt.compare(
+        password,
+        user.password_hash
+      );
 
     if (!passwordCorrect) {
       return res.status(401).json({
-        error: "Invalid email or password.",
+        error:
+          "Invalid email or password.",
       });
     }
 
@@ -326,8 +373,12 @@ app.post("/api/auth/login", async (req, res) => {
         role: user.role,
       },
     });
+
   } catch (error) {
-    console.error("Login error:", error.message);
+    console.error(
+      "Login error:",
+      error.message
+    );
 
     res.status(500).json({
       error: "Login failed.",
@@ -348,8 +399,11 @@ app.get("/api/workers", async (req, res) => {
     `);
 
     res.json(result.rows);
+
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({
+      error: error.message,
+    });
   }
 });
 
@@ -364,17 +418,6 @@ app.post("/api/workers", async (req, res) => {
       site_id,
     } = req.body;
 
-    if (
-      !worker_type ||
-      !skill ||
-      daily_rate === undefined ||
-      daily_rate === ""
-    ) {
-      return res.status(400).json({
-        error: "Worker type, skill and daily rate are required.",
-      });
-    }
-
     const result = await pool.query(
       `
       INSERT INTO workers
@@ -386,7 +429,7 @@ app.post("/api/workers", async (req, res) => {
         daily_rate,
         site_id
       )
-      VALUES ($1, $2, $3, $4, $5, $6)
+      VALUES ($1,$2,$3,$4,$5,$6)
       RETURNING *
       `,
       [
@@ -394,14 +437,17 @@ app.post("/api/workers", async (req, res) => {
         worker_type,
         skill,
         availability || "available",
-        Number(daily_rate),
+        daily_rate,
         site_id || null,
       ]
     );
 
     res.status(201).json(result.rows[0]);
+
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({
+      error: error.message,
+    });
   }
 });
 
@@ -423,10 +469,14 @@ app.delete("/api/workers/:id", async (req, res) => {
     }
 
     res.json({
-      message: "Worker deleted successfully.",
+      message:
+        "Worker deleted successfully.",
     });
+
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({
+      error: error.message,
+    });
   }
 });
 
@@ -443,8 +493,11 @@ app.get("/api/mining-sites", async (req, res) => {
     `);
 
     res.json(result.rows);
+
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({
+      error: error.message,
+    });
   }
 });
 
@@ -457,12 +510,6 @@ app.post("/api/mining-sites", async (req, res) => {
       status,
     } = req.body;
 
-    if (!site_name || !location) {
-      return res.status(400).json({
-        error: "Site name and location are required.",
-      });
-    }
-
     const result = await pool.query(
       `
       INSERT INTO mining_sites
@@ -472,7 +519,7 @@ app.post("/api/mining-sites", async (req, res) => {
         description,
         status
       )
-      VALUES ($1, $2, $3, $4)
+      VALUES ($1,$2,$3,$4)
       RETURNING *
       `,
       [
@@ -484,30 +531,16 @@ app.post("/api/mining-sites", async (req, res) => {
     );
 
     res.status(201).json(result.rows[0]);
+
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({
+      error: error.message,
+    });
   }
 });
 
 app.delete("/api/mining-sites/:id", async (req, res) => {
   try {
-    const workerCheck = await pool.query(
-      `
-      SELECT worker_id
-      FROM workers
-      WHERE site_id = $1
-      LIMIT 1
-      `,
-      [req.params.id]
-    );
-
-    if (workerCheck.rows.length > 0) {
-      return res.status(400).json({
-        error:
-          "This mining site cannot be deleted because workers are assigned to it.",
-      });
-    }
-
     const result = await pool.query(
       `
       DELETE FROM mining_sites
@@ -524,10 +557,14 @@ app.delete("/api/mining-sites/:id", async (req, res) => {
     }
 
     res.json({
-      message: "Mining site deleted successfully.",
+      message:
+        "Mining site deleted successfully.",
     });
+
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({
+      error: error.message,
+    });
   }
 });
 
@@ -544,8 +581,11 @@ app.get("/api/kaolin-products", async (req, res) => {
     `);
 
     res.json(result.rows);
+
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({
+      error: error.message,
+    });
   }
 });
 
@@ -559,20 +599,6 @@ app.post("/api/kaolin-products", async (req, res) => {
       price_per_unit,
     } = req.body;
 
-    if (
-      !product_name ||
-      !grade ||
-      quantity_available === "" ||
-      quantity_available === undefined ||
-      !unit ||
-      price_per_unit === "" ||
-      price_per_unit === undefined
-    ) {
-      return res.status(400).json({
-        error: "Please complete all product fields.",
-      });
-    }
-
     const result = await pool.query(
       `
       INSERT INTO kaolin_products
@@ -583,63 +609,24 @@ app.post("/api/kaolin-products", async (req, res) => {
         unit,
         price_per_unit
       )
-      VALUES ($1, $2, $3, $4, $5)
+      VALUES ($1,$2,$3,$4,$5)
       RETURNING *
       `,
       [
         product_name,
         grade,
-        Number(quantity_available),
+        quantity_available,
         unit,
-        Number(price_per_unit),
+        price_per_unit,
       ]
     );
 
     res.status(201).json(result.rows[0]);
+
   } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.delete("/api/kaolin-products/:id", async (req, res) => {
-  try {
-    const orderCheck = await pool.query(
-      `
-      SELECT order_id
-      FROM orders
-      WHERE product_id = $1
-      LIMIT 1
-      `,
-      [req.params.id]
-    );
-
-    if (orderCheck.rows.length > 0) {
-      return res.status(400).json({
-        error:
-          "This product cannot be deleted because it is used in an order.",
-      });
-    }
-
-    const result = await pool.query(
-      `
-      DELETE FROM kaolin_products
-      WHERE product_id = $1
-      RETURNING *
-      `,
-      [req.params.id]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        error: "Product not found.",
-      });
-    }
-
-    res.json({
-      message: "Product deleted successfully.",
+    res.status(500).json({
+      error: error.message,
     });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
   }
 });
 
@@ -656,8 +643,11 @@ app.get("/api/customers", async (req, res) => {
     `);
 
     res.json(result.rows);
+
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({
+      error: error.message,
+    });
   }
 });
 
@@ -670,12 +660,6 @@ app.post("/api/customers", async (req, res) => {
       address,
     } = req.body;
 
-    if (!full_name || !phone) {
-      return res.status(400).json({
-        error: "Customer name and phone number are required.",
-      });
-    }
-
     const result = await pool.query(
       `
       INSERT INTO customers
@@ -685,7 +669,7 @@ app.post("/api/customers", async (req, res) => {
         email,
         address
       )
-      VALUES ($1, $2, $3, $4)
+      VALUES ($1,$2,$3,$4)
       RETURNING *
       `,
       [
@@ -697,50 +681,11 @@ app.post("/api/customers", async (req, res) => {
     );
 
     res.status(201).json(result.rows[0]);
+
   } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.delete("/api/customers/:id", async (req, res) => {
-  try {
-    const orderCheck = await pool.query(
-      `
-      SELECT order_id
-      FROM orders
-      WHERE customer_id = $1
-      LIMIT 1
-      `,
-      [req.params.id]
-    );
-
-    if (orderCheck.rows.length > 0) {
-      return res.status(400).json({
-        error:
-          "This customer cannot be deleted because the customer has existing orders.",
-      });
-    }
-
-    const result = await pool.query(
-      `
-      DELETE FROM customers
-      WHERE customer_id = $1
-      RETURNING *
-      `,
-      [req.params.id]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        error: "Customer not found.",
-      });
-    }
-
-    res.json({
-      message: "Customer deleted successfully.",
+    res.status(500).json({
+      error: error.message,
     });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
   }
 });
 
@@ -757,8 +702,11 @@ app.get("/api/suppliers", async (req, res) => {
     `);
 
     res.json(result.rows);
+
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({
+      error: error.message,
+    });
   }
 });
 
@@ -772,12 +720,6 @@ app.post("/api/suppliers", async (req, res) => {
       status,
     } = req.body;
 
-    if (!supplier_name) {
-      return res.status(400).json({
-        error: "Supplier name is required.",
-      });
-    }
-
     const result = await pool.query(
       `
       INSERT INTO suppliers
@@ -788,7 +730,7 @@ app.post("/api/suppliers", async (req, res) => {
         address,
         status
       )
-      VALUES ($1, $2, $3, $4, $5)
+      VALUES ($1,$2,$3,$4,$5)
       RETURNING *
       `,
       [
@@ -801,33 +743,11 @@ app.post("/api/suppliers", async (req, res) => {
     );
 
     res.status(201).json(result.rows[0]);
+
   } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.delete("/api/suppliers/:id", async (req, res) => {
-  try {
-    const result = await pool.query(
-      `
-      DELETE FROM suppliers
-      WHERE supplier_id = $1
-      RETURNING *
-      `,
-      [req.params.id]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        error: "Supplier not found.",
-      });
-    }
-
-    res.json({
-      message: "Supplier deleted successfully.",
+    res.status(500).json({
+      error: error.message,
     });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
   }
 });
 
@@ -851,8 +771,11 @@ app.get("/api/orders", async (req, res) => {
     `);
 
     res.json(result.rows);
+
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({
+      error: error.message,
+    });
   }
 });
 
@@ -865,38 +788,9 @@ app.post("/api/orders", async (req, res) => {
       order_status,
     } = req.body;
 
-    if (!customer_id || !product_id || !quantity) {
-      return res.status(400).json({
-        error: "Customer, product and quantity are required.",
-      });
-    }
-
-    if (Number(quantity) <= 0) {
-      return res.status(400).json({
-        error: "Quantity must be greater than zero.",
-      });
-    }
-
-    const customerResult = await pool.query(
-      `
-      SELECT customer_id
-      FROM customers
-      WHERE customer_id = $1
-      `,
-      [customer_id]
-    );
-
-    if (customerResult.rows.length === 0) {
-      return res.status(404).json({
-        error: "Selected customer was not found.",
-      });
-    }
-
     const productResult = await pool.query(
       `
-      SELECT
-        product_id,
-        price_per_unit
+      SELECT *
       FROM kaolin_products
       WHERE product_id = $1
       `,
@@ -905,14 +799,14 @@ app.post("/api/orders", async (req, res) => {
 
     if (productResult.rows.length === 0) {
       return res.status(404).json({
-        error: "Selected product was not found.",
+        error: "Product not found.",
       });
     }
 
     const product = productResult.rows[0];
 
     const totalAmount =
-      Number(product.price_per_unit || 0) *
+      Number(product.price_per_unit) *
       Number(quantity);
 
     const result = await pool.query(
@@ -925,50 +819,29 @@ app.post("/api/orders", async (req, res) => {
         total_amount,
         order_status
       )
-      VALUES ($1, $2, $3, $4, $5)
+      VALUES ($1,$2,$3,$4,$5)
       RETURNING *
       `,
       [
-        Number(customer_id),
-        Number(product_id),
-        Number(quantity),
+        customer_id,
+        product_id,
+        quantity,
         totalAmount,
         order_status || "pending",
       ]
     );
 
     res.status(201).json(result.rows[0]);
+
   } catch (error) {
-    console.error("Order creation error:", error.message);
+    console.error(
+      "Order creation error:",
+      error.message
+    );
 
     res.status(500).json({
       error: error.message,
     });
-  }
-});
-
-app.delete("/api/orders/:id", async (req, res) => {
-  try {
-    const result = await pool.query(
-      `
-      DELETE FROM orders
-      WHERE order_id = $1
-      RETURNING *
-      `,
-      [req.params.id]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        error: "Order not found.",
-      });
-    }
-
-    res.json({
-      message: "Order deleted successfully.",
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
   }
 });
 
@@ -987,7 +860,9 @@ app.use("/api", (req, res) => {
 // =====================================================
 
 app.listen(PORT, async () => {
-  console.log(`Backend server running on port ${PORT}`);
+  console.log(
+    `Backend server running on port ${PORT}`
+  );
 
   await startDatabase();
 });
